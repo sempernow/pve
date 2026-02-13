@@ -20,6 +20,9 @@ commit(){
     gc && git push && gl && gs ||
         echo "⚠️  This is NOT a Git repo"
 }
+bundle(){
+    git bundle create ../$(basename $(pwd)).bundle --all
+}
 pull(){
     #scp -rp pve:logs .
     #scp -rp pve:k0s-lab .
