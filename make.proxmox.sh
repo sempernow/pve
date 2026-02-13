@@ -21,11 +21,11 @@ commit(){
         echo "⚠️  This is NOT a Git repo"
 }
 pull(){
-    scp -rp proxmox:logs pve/
-    scp -rp proxmox:k0s-lab pve/
+    scp -rp pve:logs .
+    scp -rp pve:k0s-lab .
 }
 push(){
-    scp -rp  pve/k0s-lab/ proxmox:.
+    scp -rp  k0s-lab/ pve:.
 }
 
 
