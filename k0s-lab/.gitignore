@@ -1,0 +1,5 @@
+kubeconfig
+k0sctl.yaml
+*.qcow2
+*.iso
+k0sctl-linux-*
