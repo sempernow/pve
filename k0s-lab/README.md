@@ -48,3 +48,6 @@ bash k0s-install.sh reset
 bash k0s-cluster-vms.sh destroy
 bash net-snat-bridge.sh destroy
 ```
+
+---
+
