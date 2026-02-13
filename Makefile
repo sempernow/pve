@@ -137,6 +137,4 @@ pscpu :
 userrc :
 	ansibash 'git clone https://github.com/sempernow/userrc 2>/dev/null || echo ok'
 	ansibash 'pushd userrc && git pull && make sync-user && make user'
-reboot : 
-	ansibash sudo reboot
 
