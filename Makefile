@@ -72,7 +72,6 @@ menu :
 	@echo "psrss        : Top RSS usage"
 	@echo "pscpu        : Top CPU usage"
 	@echo "scan         : Nmap scan report"
-	$(INFO) "⚠️  Teardown"
 	$(INFO) "🛠️  Maintenance"
 	@echo "userrc       : Install onto targets the latest shell scripts of github.com/sempernow/userrc.git"
 	@echo "env          : Print the make environment"

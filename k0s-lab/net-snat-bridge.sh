@@ -2,6 +2,9 @@
 set -e
 
 # === net-snat-bridge.sh - Create isolated SNAT Gateway network ===
+# - vmbr1 is a Linux bridge with bridge_ports none (no physical uplink — internal only).
+# - iptables MASQUERADE on egress to vmbr0 does the SNAT.
+# - The bridge (vmbr1) itself acts as gateway, packet-forwarding routes between bridges (vmbr1, vmbr0).
 
 BRIDGE="vmbr1"          # Bridge device; default gateway for VMs/containers.
 SUBNET="10.0.33.0/24"   # Isolated, private (RFC-1918) subnet CIDR.
@@ -18,7 +21,7 @@ add_bridge() {
     echo "🚧 Adding bridge '$BRIDGE' to /etc/network/interfaces..."
     # Source NAT (SNAT/MASQUERADE) 
     # - iptables rule translates private IPs to external interface IP.
-    # - This provides one-way connectivity:
+    # - This provides ONE-WAY CONNECTIVITY:
     #   - Internal machines (on this NAT subnet) may initiate outbound connections.
     #   - External machines *cannot* directly initiate connections inbound (without port forwarding).
     tee -a /etc/network/interfaces <<-EOF

@@ -31,21 +31,40 @@ Guest VMs on this pve should be on segregated network (10.0.33.0/24, perhaps) ha
 
 ```mermaid
 flowchart TD
-    A(Gateway) -->B(192.168.28.0/24)
-    B --> C[PVE]
-    C --> P{SNAT Bridge
-    10.0.33.0/24}
-    P --> k0s-ctrl
-    P --> k0s-w1
-    P --> k0s-w2
-    B --> Hyper-V --> D{SNAT Bridge
-    10.0.11.0/24}
-    D --> W[WinSrv2019
-    ADDC/ADCS/DHCP/DNS]
-    W --> adm
-    W --> k8s-cp-w1
-    W --> k8s-cp-w2
-    W --> k8s-cp-w3
+    LAN(
+        Internet Gateway
+        192.168.28.0/24
+    )
+    LAN --> PVE
+    PVE -->vmbr1{
+        vmbr1
+        SNAT Bridge 
+        10.0.33.0/24
+    }
+    vmbr1 --> k0s-ctrl
+    vmbr1 --> k0s-w1
+    vmbr1 --> k0s-w2
+    
+    LAN --> HyperV
+    HyperV --> NAT1{
+        NAT1/vEth
+        NetNAT/InternalSW
+        10.0.11.0/24
+    }
+    NAT1 --> W(
+            Windows Server
+        ADDC/DNS/DHCP/ADCS
+    )
+    NAT1 --> adm
+    NAT1 --> k8s-cp-w1
+    NAT1 --> k8s-cp-w2
+    NAT1 --> k8s-cp-w3
+
+    W -. AD/DHCP/DNS .-> adm
+    W -. AD/DHCP/DNS .-> k8s-cp-w1
+    W -. AD/DHCP/DNS .-> k8s-cp-w2
+    W -. AD/DHCP/DNS .-> k8s-cp-w3
+
 ```
 
 ### Storage
@@ -158,16 +177,16 @@ Good approach — validate the pattern, then apply to real infra.
 
 ### Validate the pattern
 
-[__`k0s-flat-vm.sh`__](k0s-lab/k0s-flat-vm.sh)
+Create a VM on flat network: [__`k0s-flat-vm.sh`__](k0s-lab/k0s-flat-vm.sh)
 
 Usage:
 
 ```bash
 # Create and start
-bash k0s-flat.sh create
+bash k0s-flat-vm.sh create
 
 # Check status
-bash k0s-flat.sh status ## No IP due to no qemu-guest-agent
+bash k0s-flat-vm.sh status ## No IP due to no qemu-guest-agent
 # Add that convenience imperatively ...
 ssh k0s@192.168.28.84 '
     sudo apt update &&
@@ -180,7 +199,7 @@ ssh k0s@192.168.28.84 '
 qm terminal 100 # user: k0s, pass: changeme
 
 # Teardown
-bash k0s-flat.sh destroy
+bash k0s-flat-vm.sh destroy
 ```
 
 Prep to bake `qemu-guest-agent` into the template by creating snippet:
