@@ -64,7 +64,6 @@ flowchart TD
     W -. AD/DHCP/DNS .-> k8s-cp-w1
     W -. AD/DHCP/DNS .-> k8s-cp-w2
     W -. AD/DHCP/DNS .-> k8s-cp-w3
-
 ```
 
 ### Storage
@@ -372,6 +371,199 @@ bash debian12-template.sh
 Debian 12 (bookworm) configured for `cloud-init` method (__`*.qcow2`__)
 
 @ [__`debian12-template-v0.0.1.sh`__](pve/vm/debian12-template-v0.0.1.sh)
+
+---
+
+The key question is *why* NAT1 is reachable from LAN. Most likely:
+
+- Hyper-V host has **DNAT/port forwarding** rules forwarding `6443` (kube API) to `k8s-cp-*`
+- WinSrv **DNS is authoritative** for those hostnames and LAN clients resolve through it (or it's set as their DNS server)
+
+vmbr1 only has outbound MASQUERADE — there's no inbound path from LAN to `10.0.33.0/24`.
+
+---
+
+## Remote-client (LAN) access to pve/k0s-lab cluster (`vmbr1`)
+
+### Q:
+
+So, we have these two isolated networks, vmbr1 (pve) and NAT1 (hyperv). From a remote host on the LAN (192.168.28.0/24) network, K8s API clients  have access to NAT1 cluster (under ADDC/DHCP/DNS controller), but not vmbr1 cluster, which has no domain controller or anything else. What is the advised way to provision same access to pve cluster as we have on NAT1 cluster?
+
+### A:
+
+The key question is *why* NAT1 is reachable from LAN. Most likely:
+
+- Hyper-V host has **DNAT/port forwarding** rules forwarding `6443` (kube API) to `k8s-cp-*`
+- WinSrv **DNS is authoritative** for those hostnames and LAN clients resolve through it (or it's set as their DNS server)
+
+vmbr1 only has outbound MASQUERADE — there's no inbound path from LAN to `10.0.33.0/24`.
+
+---
+
+**Options, in order of simplicity:**
+
+**1. DNAT on PVE host (minimal, quick)**
+
+Add to `vmbr1` config in `/etc/network/interfaces`:
+```bash
+post-up iptables -t nat -A PREROUTING -i vmbr0 -p tcp --dport 6443 -j DNAT --to 10.0.33.x:6443
+post-down iptables -t nat -D PREROUTING -i vmbr0 -p tcp --dport 6443 -j DNAT --to 10.0.33.x:6443
+```
+Then add a static entry to your LAN DNS (or `/etc/hosts` on client machines) pointing to the PVE host IP. This mirrors what Hyper-V is presumably doing.
+
+**2. MetalLB on k0s + DNAT (cleaner, scalable)**
+
+- Deploy MetalLB with an address pool in a range you reserve, e.g. `10.0.33.200-10.0.33.250`
+- DNAT specific LB IPs from PVE's `vmbr0` into `vmbr1`
+- Gives you per-service control rather than one-off port forwards
+
+**3. Add a DNS/DHCP VM on vmbr1 (full parity with NAT1)**
+
+Run a small VM (or LXC on PVE) with `dnsmasq` or a CoreDNS instance — equivalent role to your WinSrv. Register it as a DNS server on your LAN gateway. This is full parity with the Hyper-V side but heavier.
+
+---
+
+**Recommended path** given your existing setup:
+
+Option 1 gets you unblocked immediately.  
+Option 2 is the right longer-term answer if the k0s cluster grows.  
+Option 3 only makes sense if you need DHCP or AD-equivalent services for PVE-hosted workloads — which you currently don't.
+
+What does your LAN DNS situation look like — is WinSrv the authoritative DNS for all of `192.168.28.0/24`, or does your gateway handle that?
+
+
+### Q:
+
+Yes, WinSrv is *the* DNS. We create that NAT1 to mimic a private-network environment having WinSrv as the domain controller. 
+
+
+### A:
+
+Since WinSrv owns LAN DNS, the DNS half is already solved — you just add A records for k0s nodes there. The problem is purely **routing inbound from LAN to 10.0.33.0/24**.
+
+You have three real options:
+
+---
+
+**Option A — Static route on the gateway (cleanest)**
+
+Add to your LAN gateway: `10.0.33.0/24 via <PVE-LAN-IP>`
+
+PVE already has `ip_forward=1` and the MASQUERADE rule only applies outbound. Inbound routed traffic from LAN bypasses NAT entirely — `10.0.33.0/24` becomes fully reachable bidirectionally. No DNAT rules, no port-by-port maintenance.
+
+This is also worth asking: *is this how NAT1 LAN access actually works?* If your gateway already has `10.0.11.0/24 via <HyperV-LAN-IP>`, that would explain the connectivity without explicit DNAT on Hyper-V.
+
+---
+
+**Option B — DNAT on PVE host (no gateway access needed)**
+
+If you can't touch the gateway, port-forward specific ports from PVE's LAN IP into `vmbr1`. Workable but you're maintaining a mapping for every service (6443, NodePorts, etc.).
+
+---
+
+**Option C — WireGuard/VPN on PVE (future-proof)**
+
+Run a WireGuard peer on PVE, LAN clients connect to it. Relevant if you're anticipating remote access beyond just the homelab LAN, or once IdM/cross-forest trust is in play and you want the same connectivity model for both clusters without touching gateway routing.
+
+---
+
+**Recommended now:** Option A, and verify whether that's already how NAT1 works. If the gateway already has a static route for `10.0.11.0/24`, adding one for `10.0.33.0/24` is a one-liner and gives you full parity with zero additional complexity before you tackle the IdM migration.
+
+
+---
+
+### Q: 
+
+We have no access to the LAN's gateway router (to ISP). Access to LAN from NAT1 is due this code:
+
+- `window-server/iac/network`
+    - `network-define.ps1`
+    - `network-set.ps1`
+    - `network-dns.ps1`
+
+### A:
+
+Now the full picture is clear. NAT1 LAN access works because:
+
+- Hyper-V has **IP forwarding enabled** across all vEthernet interfaces
+- `vEthernet (ExternalSwitchEth2)` sits on LAN at `192.168.28.47`
+- Windows routes between `ExtAlias ↔ NatAlias` — no gateway involvement needed
+- LAN clients either have static routes to `192.168.11.0/24 via 192.168.28.47`, or WinSrv DHCP pushes them.
+
+**The PVE equivalent is the same mechanism**, just needing two things:
+
+...
+
+Good pushback — I overclaimed there. Let me be more precise.
+
+WinSrv is on `192.168.11.0/24` (NAT1), not on the LAN directly. So it can only push DHCP options to **NAT1 clients**, not arbitrary LAN hosts. DHCP Option 121 only reaches hosts that are DHCP clients of WinSrv — which the LAN clients are not.
+
+So the question becomes: **how is NAT1 currently reachable from other LAN hosts?** Two possibilities:
+
+1. **It isn't — "LAN access" means only from the Hyper-V host itself**, which has full routing between `ExtAlias ↔ NatAlias`. All the forwarding config in the scripts is for the Hyper-V host's own routing, not for other LAN clients.
+
+2. **Those LAN clients have manually configured static routes** pointing `192.168.11.0/24 via 192.168.28.47`.
+
+If it's (1), then the equivalent for PVE is simply adding a static route **on each client machine** that needs access:
+
+WSL2 (Fail)
+
+```bash
+# Linux client
+ip route add 10.0.33.0/24 via <PVE-LAN-IP>
+```
+
+Powershell (Success)
+
+```bash
+# Windows client
+[13:00:33] [master ≡] S:\DEV\devops\infra\windows-server\iac\network
+PS>  route add 10.0.33.0 mask 255.255.255.0 192.168.28.181 -p
+```
+
+@ `Ubuntu (master =) [13:21:41] [1] [#0] /s/DEV/devops/infra/windows-server`
+
+```bash
+☩ export KUBECONFIG=~/.kube/config_pve_k0s
+☩ k get no
+NAME       STATUS   ROLES           AGE   VERSION
+k0s-ctrl   Ready    control-plane   27d   v1.34.3+k0s
+k0s-w1     Ready    <none>          27d   v1.34.3+k0s
+k0s-w2     Ready    <none>          27d   v1.34.3+k0s
+```
+
+Symmetric attempt failed, so hyperv clients 
+(Win11 Powershell and WSL) 
+have access to pve k0s cluster, 
+but pve client has no access to hyperv k8s cluster. 
+
+#### Summary : WSL2 Workstation Access to Both Kubernetes Clusters
+
+**k0s cluster (PVE / vmbr1 / `10.0.33.0/24`)**
+
+**Problem:** PVE uses iptables MASQUERADE — all outbound traffic from `10.0.33.0/24` appears as `192.168.28.181`. No inbound path from LAN exists by design.
+
+**Fix:** Static route on the Windows workstation:
+```powershell
+route add 10.0.33.0 mask 255.255.255.0 192.168.28.181 -p
+```
+
+**Why `-p` (persistent) and PowerShell instead of WSL2 `ip route add`:** WSL2 runs in a lightweight VM with its own virtualized network stack. Routes added via `ip route` inside WSL2 are scoped to that VM and don't affect the Windows routing table. The Windows route table is what matters here since packets destined for `10.0.33.0/24` are routed by the Windows host before they ever reach WSL2.
+
+**Why it works:** PVE has `ip_forward=1` and the MASQUERADE rule only fires for traffic *sourced from* `10.0.33.0/24`. Inbound routed traffic from LAN bypasses it entirely. PVE knows both subnets directly so return path works without any additional config.
+
+**k8s cluster (Hyper-V / NAT1 / `192.168.11.0/24`)**
+
+**No additional config needed.** The Hyper-V networking scripts already handled this:
+- `Set-NetIPInterface -Forwarding Enabled` on all vEthernet interfaces turns the Hyper-V host into a router between `ExtAlias (192.168.28.x)` and `NatAlias (192.168.11.x)`
+- The workstation *is* the Hyper-V host, so it originates traffic directly through that routing path
+
+
+#### Why the reverse (PVE → NAT1) doesn't work
+
+Windows `NetNat` is a NAT engine, not a general-purpose router. It owns `192.168.11.0/24` as a NAT prefix and only processes outbound sessions it initiated — unsolicited inbound packets from external sources like PVE (`10.0.33.x`) arrive on the external interface and are dropped by NetNAT before any forwarding occurs. Disabling Windows Firewall made no difference because the block is at the NAT layer, not the firewall layer.
+
+---
 
 ## **W**ake **o**n **L**an (WoL) 
 
