@@ -33,12 +33,12 @@ Guest VMs on this pve should be on segregated network (10.0.33.0/24, perhaps) ha
 flowchart TD
     A(Gateway) -->B(192.168.28.0/24)
     B --> C[PVE]
-    C --> P{Bridge
+    C --> P{SNAT Bridge
     10.0.33.0/24}
     P --> k0s-ctrl
     P --> k0s-w1
     P --> k0s-w2
-    B --> Hyper-V --> D{NAT
+    B --> Hyper-V --> D{SNAT Bridge
     10.0.11.0/24}
     D --> W[WinSrv2019
     ADDC/ADCS/DHCP/DNS]
