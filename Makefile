@@ -101,6 +101,8 @@ html :
 	find . -type f ! -path './.git/*' -name '*.md' -exec md2html.exe "{}" \;
 commit : html mode
 	gc && git push && gl && gs
+bundle :
+	bash make.proxmox.sh bundle
 
 
 ##############################################################################
