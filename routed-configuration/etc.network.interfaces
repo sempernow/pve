@@ -1,0 +1,23 @@
+auto lo
+iface lo inet loopback
+
+auto eno0
+iface eno0 inet static
+    address 192.168.28.181/24
+    gateway 192.168.28.1
+    post-up echo 1 > /proc/sys/net/ipv4/ip_forward
+    post-up echo 1 > /proc/sys/net/ipv4/conf/eno0/proxy_arp
+
+
+auto vmbr0
+iface vmbr0 inet static
+    address  10.0.33.1/24
+    bridge-ports none
+    bridge-stp off
+    bridge-fd 0
+
+iface enp4s0 inet manual
+
+iface wlp3s0 inet manual
+
+source /etc/network/interfaces.d/*

@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls -la /s/DEV/devops/infra/hypervisors/proxmox/pve/opnsense-lab/ 2>/dev/null; echo \"EXIT: $?\")"
+    ]
+  }
+}

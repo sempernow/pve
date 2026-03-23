@@ -1,0 +1,33 @@
+# /etc/network/interfaces
+################################
+# pve:          192.168.28.181
+# OPNsense WAN: 192.168.28.182
+# OPNsense LAN: 10.0.33.0/24
+################################
+auto lo
+iface lo inet loopback
+
+iface eno1 inet manual
+
+# WAN
+auto vmbr0
+iface vmbr0 inet static
+    address 192.168.28.181/24
+    gateway 192.168.28.1
+    bridge-ports eno1
+    bridge-stp off
+    bridge-fd 0
+
+# LAN
+auto vmbr1
+iface vmbr1 inet static
+    address 10.0.33.254/24
+    bridge-ports none
+    bridge-stp off
+    bridge-fd 0
+
+iface enp4s0 inet manual
+
+iface wlp3s0 inet manual
+
+source /etc/network/interfaces.d/*
