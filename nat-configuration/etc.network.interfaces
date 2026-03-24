@@ -1,0 +1,30 @@
+# Masquerading (NAT) with IP tables : PVE as gateway of LAN to WAN.
+# https://pve.proxmox.com/wiki/Network_Configuration#sysadmin_network_masquerading
+
+auto lo
+iface lo inet loopback
+
+# WAN
+auto eno1
+iface eno1 inet static
+    address 192.168.28.181/24
+    gateway 192.168.28.1
+
+# LAN
+auto vmbr0
+iface vmbr0 inet static
+    address  10.0.33.1/24
+    bridge-ports none
+    bridge-stp off
+    bridge-fd 0
+
+    post-up   echo 1 > /proc/sys/net/ipv4/ip_forward
+    post-up   iptables -t nat -A POSTROUTING -s '10.0.33.0/24' -o eno1 -j MASQUERADE
+    post-down iptables -t nat -D POSTROUTING -s '10.0.33.0/24' -o eno1 -j MASQUERADE
+
+iface enp4s0 inet manual
+
+iface wlp3s0 inet manual
+
+source /etc/network/interfaces.d/*
+

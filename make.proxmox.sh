@@ -24,17 +24,16 @@ bundle(){
     git bundle create ../$(basename $(pwd)).bundle --all
 }
 pull(){
-    #scp -rp pve:logs .
-    #scp -rp pve:k0s-lab .
     rsync -atuvz --exclude='.git' root@pve:logs .
     rsync -atuvz --exclude='.git' root@pve:k0s-lab .
     rsync -atuvz --exclude='.git' root@pve:opnsense-lab .
+    rsync -atuvz --exclude='.git' root@pve:nat-configuration .
 }
 push(){
-    #scp -rp  k0s-lab/ pve:.
     rsync -atuvz --exclude='.git' logs    root@pve:.   
     rsync -atuvz --exclude='.git' k0s-lab root@pve:.
     rsync -atuvz --exclude='.git' opnsense-lab root@pve:.
+    rsync -atuvz --exclude='.git' nat-configuration root@pve:.
 }
 
 
